@@ -150,8 +150,6 @@ function createTftp {
     echo "Setting up TFTP server and prepare tftproot directory";
     echo "";
 
-
-    
     backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
     rc=`cp /etc/xinetd.d/tftp "/etc/xinetd.d/tftp-$backup_ext"`;
 
@@ -208,14 +206,27 @@ function disableSelinux {
 
 function disableFirewalld {
     echo "Disabling firewalld"
-    systemctl disable firewalld
-    systemctl stop firewalld
+    rc=`systemctl disable firewalld`
+    rc=`systemctl stop firewalld`
+};
+
+function enableNfs {
+    echo "Enabling NFS";
+    rc=`systemctl enable rpcbind`
+    rc=`systemctl enable nfs-server`
+    rc=`systemctl enable nfs-lock`
+    rc=`systemctl enable nfs-idmap`
+    rc=`systemctl start rpcbind`
+    rc=`systemctl start nfs-server`
+    rc=`systemctl start nfs-lock`
+    rc=`systemctl start nfs-idmap`
 };
 
 function prepareNetwork {
     echo "Preparing network"
     disableSelinux;
     disableFirewalld;
+    enableNfs;
     netArray=("net.ipv4.ip_forward=1")
     for index in ${!netArray[*]}
     do
