@@ -1,16 +1,19 @@
 #!/bin/bash
 # (c) 2015, by Wasiliy Besedin, besco@yabesco.ru, 2:5028/68@fidonet.org, skype: unique-login-for-all
 
+isoUrl="http://mirror.corbina.net/pub/Linux/centos/7/isos/x86_64/CentOS-7-x86_64-Minimal-1503-01.iso";
+tftp_root="/tftpboot";
+isoFile="";
 
 function installSoft {
     # The necessary software
-    nSoft=("dhcp" "httpd" "syslinux" "tftp" "tftp-server" "vim-enhanced" "wget");
+    nSoft=("dhcp" "httpd" "syslinux" "tftp" "tftp-server" "vim-enhanced" "wget" "nfs-utils");
 
     for index in ${!nSoft[*]}
     do
         checkInstall=`yum list installed "${nSoft[$index]}" &>/dev/null`;
         if [ $? == "1" ]; then 
-	    echo "${nSoft[$index]} is not installed. Installing:";
+	    echo "${nSoft[$index]} is not installed. Installing...";
 	    rc=`yum install -y ${nSoft[$index]}`;
 	    if [ $? == "1" ]; then 
 		echo "Install ${nSoft[$index]} failed:";
@@ -146,8 +149,8 @@ function createTftp {
     echo "Setting up TFTP server and prepare tftproot directory";
     echo "";
 
-    tftp_root="/tftpboot";
 
+    
     backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
     rc=`cp /etc/xinetd.d/tftp "/etc/xinetd.d/tftp-$backup_ext"`;
 
@@ -190,10 +193,114 @@ EOF
     systemctl restart xinetd
     echo "Preparing TFTP complete"
 };
-# GiveMeBackMyEth
+
+function disableSelinux {
+    echo "Disabling SElinux";
+    status=`cat /etc/selinux/config |grep -w SELINUX|grep -v "#"|awk '{split($1,a,"=");print a[2]}'| tr [a-z] [A-Z]`
+    if [ "$status" == "DISABLED" ]; then
+	echo "SElinux already disabled"
+    else
+	`sed -i 's/=enforcing/=disabled/;s/=permissive/=disabled/' /etc/selinux/config`;
+	echo "SElinux disabled. You must reboot server"
+    fi
+};
+
+function prepareNetwork {
+    echo "Preparing network"
+    disableSelinux;
+    netArray=("net.ipv4.ip_forward=1")
+    for index in ${!netArray[*]}
+    do
+	rc=`cat /etc/sysctl.conf |grep ${netArray[$index]}|wc -l`
+	if [ $rc -eq 0 ]; then
+	    echo "Add ${netArray[$index]} in sysctl"
+	    echo "${netArray[$index]}" >> /etc/sysctl.conf
+	else
+	    echo "${netArray[$index]} already exist"
+	fi
+    done
+};
+
+function prepareImage {
+    echo "Preparing installation image."
+    echo ""
+    if [ !$isoFile ]; then 
+	echo -n "Donwload Centos 7 image from $isoUrl? (YN)[N]: "
+	read yn
+	if [[ $yn == "Y" || $yn == "y" ]]; then 
+	    #wget -c --directory-prefix=/tmp $isoUrl
+	    `echo "$isoUrl"|awk '{n=split(\$1,a,"/");print a[n]}'`
+	    isoFile="/tmp/`echo "$isoUrl"|awk '{n=split(\$1,a,"/");print a[n]}'`"; 
+	fi
+    fi
+    if [ $isoFile ]; then
+	echo "Mounting $isoFile to /mnt"
+	mount -o loop $isoFile /mnt
+	rc=$?
+	if [ $rc -eq "0" ]; then
+	    echo "Mount succesful";
+	    mkdir $tftp_root/centos
+	    cp -fvr /mnt/* $tftp_root/centos/
+	    umount /mnt
+	    echo "Preparing complete";
+	else
+	    echo "Mount failed. Errcode = $rc"; 
+	fi
+    fi
+    
+    # Mount errcodes:
+    # 0      success
+    # 1      incorrect invocation or permissions
+    # 2      system error (out of memory, cannot fork, no more loop devices)
+    # 4      internal mount bug
+    # 8      user interrupt
+    # 16     problems writing or locking /etc/mtab
+    # 32     mount failure
+    # 64     some mount succeeded
+};
+
+while test $# -gt 0
+do
+    case $1 in
+        --isourl)
+            isoUrl=$2
+            shift
+            ;;
+        --isofile)
+    	    isoFile=$2
+    	    shift
+    	    ;;
+        --prepareSoft)
+            installSoft	
+            shift
+            ;;
+        --prepareDhcp)
+            createDhcpConf
+            shift
+            ;;
+        --prepareTftp)
+    	    createTftp
+    	    shift
+    	    ;;
+    	--prepareNetwork)
+    	    prepareNetwork
+    	    shift
+    	    ;;
+    	--prepareImage)
+    	    prepareImage
+    	    shift
+    	    ;;
+        *)
+            echo >&2 "Invalid argument: $1"
+            ;;
+    esac
+    shift
+done
 
 
-installSoft;
-createDhcpConf
-createTftp
-
+#GiveMeBackMyEth
+#installSoft;
+#createDhcpConf
+#createTftp
+#prepareNetwork
+#prepareImage
