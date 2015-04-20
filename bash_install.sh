@@ -143,6 +143,7 @@ subnet $network netmask $netmask_nm {
 EOF
     `systemctl restart dhcpd`
     echo "DHCP configuration complete.";
+    echo "$tftp_root $network/255.255.255.0(ro)" >>/etc/exports
 }
 
 function createTftp {
@@ -205,9 +206,16 @@ function disableSelinux {
     fi
 };
 
+function disableFirewalld {
+    echo "Disabling firewalld"
+    systemctl disable firewalld
+    systemctl stop firewalld
+};
+
 function prepareNetwork {
     echo "Preparing network"
     disableSelinux;
+    disableFirewalld;
     netArray=("net.ipv4.ip_forward=1")
     for index in ${!netArray[*]}
     do
@@ -297,10 +305,3 @@ do
     shift
 done
 
-
-#GiveMeBackMyEth
-#installSoft;
-#createDhcpConf
-#createTftp
-#prepareNetwork
-#prepareImage
