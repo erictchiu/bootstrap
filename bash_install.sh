@@ -7,7 +7,7 @@ isoFile="";
 
 function installSoft {
     # The necessary software
-    nSoft=("dhcp" "httpd" "syslinux" "tftp" "tftp-server" "vim-enhanced" "wget" "nfs-utils");
+    nSoft=("dhcp" "vsftpd" "httpd" "syslinux" "tftp" "tftp-server" "vim-enhanced" "wget" "nfs-utils");
 
     for index in ${!nSoft[*]}
     do
@@ -41,7 +41,7 @@ function GiveMeBackMyEth {
     fi
 }
 
-function createDhcpConf {
+function prepareDhcp {
     echo "Creating config for DHCP server";
     echo "";
     eth_arr=(`ifconfig|grep flags|awk '{split ($1,a,":"); print a[1]}'|xargs`)
@@ -146,7 +146,7 @@ EOF
     echo "$tftp_root $network/255.255.255.0(ro)" >>/etc/exports
 }
 
-function createTftp {
+function prepareTftp {
     echo "Setting up TFTP server and prepare tftproot directory";
     echo "";
 
@@ -208,25 +208,169 @@ function disableFirewalld {
     echo "Disabling firewalld"
     rc=`systemctl disable firewalld`
     rc=`systemctl stop firewalld`
+    fwst=`cat /etc/rc.local|grep firewalld|wc -l`
+    if [ $fwst -ne 0 ]; then
+	echo "Firewalld already disabled"
+    else 
+	echo "systemctl stop firewalld" >>/etc/rc.local
+    fi
 };
 
 function enableNfs {
     echo "Enabling NFS";
+    rc=`cat /etc/exports|grep -w $tftp_root`;
+    if [ $rc -ne 0 ]; then 
+	echo "/$tftp_root		*(ro,sync,no_root_squash,no_all_squash)" >>/etc/exports
+    fi
+
     rc=`systemctl enable rpcbind`
     rc=`systemctl enable nfs-server`
     rc=`systemctl enable nfs-lock`
     rc=`systemctl enable nfs-idmap`
+
     rc=`systemctl start rpcbind`
+    rcst=`cat /etc/rc.local|grep -w rpcbind|wc -l`
+    if [ $rcst -ne 0 ]; then
+	echo "systemctl start rpcbind" >>/etc/rc.local
+    fi
+
     rc=`systemctl start nfs-server`
+    rcst=`cat /etc/rc.local|grep -w nfs-server|wc -l`
+    if [ $rcst -ne 0 ]; then
+	echo "systemctl start nfs-server" >>/etc/rc.local	
+    fi
+    
     rc=`systemctl start nfs-lock`
+    rcst=`cat /etc/rc.local|grep -w nfs-lock|wc -l`
+    if [ $rcst -ne 0 ]; then
+	echo "systemctl start nfs-lock" >>/etc/rc.local
+    fi
+
     rc=`systemctl start nfs-idmap`
+    rcst=`cat /etc/rc.local|grep -w nfs-idmap|wc -l`
+    if [ $rcst -ne 0 ]; then
+	echo "systemctl start nfs-idmap" >>/etc/rc.local	
+    fi
+};
+
+function prepareFtpd {
+    echo "Enabling vsftpd"
+    
+}
+
+function prepareHttpd {
+    echo "Enabling httpd"
+    backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
+    rc=`cp /etc/httpd/conf/httpd.conf "/etc/httpd/conf/httpd.conf-$backup_ext"`;
+    if [ -f /etc/httpd/conf.d/welcome.conf ]; then 
+	mv /etc/httpd/conf.d/welcome.conf /etc/httpd/conf.d/welcome.disable
+    fi 
+
+cat >/etc/httpd/conf/httpd.conf <<EOF
+ServerRoot "/etc/httpd"
+Listen 80
+Include conf.modules.d/*.conf
+User apache
+Group apache
+ServerAdmin root@localhost
+<Directory />
+    AllowOverride none
+    Require all denied
+</Directory>
+
+DocumentRoot "$tftp_root/centos"
+<Directory "/$tftp_root/centos">
+    Options +Indexes +FollowSymLinks
+    AllowOverride None
+    Require all granted
+</Directory>
+<IfModule dir_module>
+    DirectoryIndex index.html
+</IfModule>
+<Files ".ht*">
+    Require all denied
+</Files>
+ErrorLog "logs/error_log"
+LogLevel warn
+<IfModule log_config_module>
+    LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+    LogFormat "%h %l %u %t \"%r\" %>s %b" common
+    <IfModule logio_module>
+      LogFormat "%h %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\" %I %O" combinedio
+    </IfModule>
+    CustomLog "logs/access_log" combined
+</IfModule>
+<IfModule alias_module>
+    ScriptAlias /cgi-bin/ "/var/www/cgi-bin/"
+</IfModule>
+
+<Directory "/var/www/cgi-bin">
+    AllowOverride None
+    Options None
+    Require all granted
+</Directory>
+
+<IfModule mime_module>
+    TypesConfig /etc/mime.types
+    AddType application/x-compress .Z
+    AddType application/x-gzip .gz .tgz
+    AddType text/html .shtml
+    AddOutputFilter INCLUDES .shtml
+</IfModule>
+
+AddDefaultCharset UTF-8
+<IfModule mime_magic_module>
+    MIMEMagicFile conf/magic
+</IfModule>
+EnableSendfile on
+IncludeOptional conf.d/*.conf
+
+EOF
+
+    `systemctl enable httpd`
+    `systemctl restart httpd`
+
+};
+
+function prepareFw {
+    echo "Preparing firewalld"
+    firewall-cmd --permanent --zone=public --add-service=nfs
+    firewall-cmd --permanent --zone=public --add-service=http
+    firewall-cmd --permanent --zone=public --add-service=tftp
+    firewall-cmd --permanent --zone=public --add-service=ftp
+    firewall-cmd --permanent --zone=public --add-service=dhcp
+    firewall-cmd --permanent --zone=public --add-port=2049/tcp
+    firewall-cmd --permanent --zone=public --add-port=56584/tcp
+    firewall-cmd --permanent --zone=public --add-port=56622/tcp
+    firewall-cmd --permanent --zone=public --add-port=111/tcp
+    firewall-cmd --permanent --zone=public --add-port=20048/tcp
+    firewall-cmd --permanent --zone=public --add-port=2049/udp
+    firewall-cmd --permanent --zone=public --add-port=69/udp
+    firewall-cmd --permanent --zone=public --add-port=20048/udp
+    firewall-cmd --permanent --zone=public --add-port=111/udp
+    firewall-cmd --permanent --zone=public --add-port=659/udp
+    firewall-cmd --permanent --zone=public --add-port=58681/udp
+    firewall-cmd --permanent --zone=public --add-port=31045/udp
+    firewall-cmd --permanent --zone=public --add-port=3449/udp
+    firewall-cmd --permanent --zone=public --add-port=57722/udp
+    firewall-cmd --permanent --zone=public --add-port=899/udp
+    firewall-cmd --reload
+    # disableFirewalld
+};
+
+function genPwd {
+    echo "genpw"
 };
 
 function prepareNetwork {
     echo "Preparing network"
+    prepareDhcp;
+    prepareTftp;
     disableSelinux;
-    disableFirewalld;
+    prepareFw;
     enableNfs;
+    prepareFtpd;
+    prepareHttpd;
     netArray=("net.ipv4.ip_forward=1")
     for index in ${!netArray[*]}
     do
@@ -290,23 +434,39 @@ do
     	    shift
     	    ;;
         --prepareSoft)
-            installSoft	
+            installSoft;
             shift
             ;;
-        --prepareDhcp)
-            createDhcpConf
+	--prepareDhcp)
+	    prepareDhcp;
             shift
             ;;
-        --prepareTftp)
-    	    createTftp
-    	    shift
-    	    ;;
-    	--prepareNetwork)
-    	    prepareNetwork
+	--prepareTftp)
+	    prepareTftp;
+            shift
+            ;;
+	--prepareFw)
+            prepareFw;
+            shift
+            ;;
+	--enableNfs)
+            enableNfs;
+            shift
+            ;;
+	--prepareFtpd)
+            prepareFtpd;
+            shift
+            ;;
+	--prepareHttpd)
+            prepareHttpd;
+            shift
+            ;;
+	--prepareNetwork)
+    	    prepareNetwork;
     	    shift
     	    ;;
     	--prepareImage)
-    	    prepareImage
+    	    prepareImage;
     	    shift
     	    ;;
         *)
@@ -316,3 +476,18 @@ do
     shift
 done
 
+echo "
+Use script with parametrs:
+
+--isourl <url>		Set url
+--isofile <file>	Set iso file
+--prepareSoft	 	Install necessery software
+--prepareDhcp		Configure DHCP server
+--prepareTftp		Configure TFTP server
+--prepareFw		Prepare firewall
+--enableNfs		Configure NFS server
+--prepareFtpd		Configure FTP server
+--prepareHttpd		Configure HTTP server
+--prepareNetwork	Configure all (DHCP,TFTP,NFS,FTP,HTTP,Firewall)
+--prepareImage		Prepare image for PXE (use with --isourl or with --isofile)
+";
