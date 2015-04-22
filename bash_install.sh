@@ -478,7 +478,7 @@ function prepareImage {
 	echo -n "Donwload Centos 7 image from $isoUrl? (YN)[N]: "
 	read yn
 	if [[ $yn == "Y" || $yn == "y" ]]; then 
-	    #wget -c --directory-prefix=/tmp $isoUrl
+	    wget -c --directory-prefix=/tmp $isoUrl
 	    `echo "$isoUrl"|awk '{n=split(\$1,a,"/");print a[n]}'`
 	    isoFile="/tmp/`echo "$isoUrl"|awk '{n=split(\$1,a,"/");print a[n]}'`"; 
 	fi
