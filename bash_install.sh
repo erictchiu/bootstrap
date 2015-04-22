@@ -255,7 +255,30 @@ function enableNfs {
 
 function prepareFtpd {
     echo "Enabling vsftpd"
-    
+    backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
+    rc=`cp /etc/vsftpd/vsftpd.conf "/etc/vsftpd/vsftpd.conf-$backup_ext"`;
+
+cat >/etc/vsftpd/vsftpd.conf <<EOF
+
+anonymous_enable=YES
+local_enable=YES
+write_enable=YES
+local_umask=022
+dirmessage_enable=YES
+xferlog_enable=YES
+connect_from_port_20=YES
+xferlog_std_format=YES
+listen=NO
+listen_ipv6=YES
+
+pam_service_name=vsftpd
+userlist_enable=YES
+tcp_wrappers=YES
+anon_root=/tftpboot/centos/
+EOF
+
+    `systemctl enable vsftpd`
+    `systemctl restart vsftpd`
 }
 
 function prepareHttpd {
@@ -279,7 +302,7 @@ ServerAdmin root@localhost
 </Directory>
 
 DocumentRoot "$tftp_root/centos"
-<Directory "/$tftp_root/centos">
+<Directory "$tftp_root/centos">
     Options +Indexes +FollowSymLinks
     AllowOverride None
     Require all granted
