@@ -111,6 +111,66 @@ function prepareDhcp {
     fi
 
     backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
+    rc=`cp $tftp_root/pxelinux.cfg/default "$tftp_root/pxelinux.cfg/default-$backup_ext"`;
+
+    echo "Creating default PXE boot menu"
+cat > /tftpboot/pxelinux.cfg/default << EOF
+default menu.c32
+prompt 0
+timeout 100
+MENU TITLE Our PXE Menu
+
+LABEL centos7_x64
+MENU LABEL CentOS 7
+KERNEL netboot/centos/7/x86_64/vmlinuz ks=nfs:$server_ip:$tftp_root/centos7-ks.cfg
+APPEND console=tty0 console=ttyS0,9600N1 initrd=netboot/centos/7/x86_64/initrd.img ksdevice=link
+EOF
+
+    backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
+    rc=`cp $tftp_root/centos7-ks.cfg "$tftp_root/centos7-ks.cfg-$backup_ext"`;
+    echo "Creating default kickstart file"
+    
+cat > /tftpboot/centos7-ks.cfg << EOF
+auth --enableshadow --passalgo=sha512
+# cdrom
+url --url ftp://$server_ip
+# url --url http://$server_ip
+# nfs --server $server_ip --dir $tftp_root/centos/
+# Use graphical install
+graphical
+# Run the Setup Agent on first boot
+firstboot --enable
+# ignoredisk --only-use=sda
+# Keyboard layouts
+keyboard --vckeymap=us --xlayouts='us'
+# System language
+lang en_US.UTF-8
+
+# Network information
+network  --bootproto=dhcp --device=eth0 --onboot=on --ipv6=auto --hostname=localhost.localdomain
+# Root password
+# rootpw --iscrypted $6$Ndp/IGYadY7ft923$hhX1/z55TJ2/8kQiu5dd41QRQW1rqhelmIMGKfHaMMW87f.XFJwJQVVNWNTuEd/pqSldEqmg1o9DANW3GEyKu/
+# System timezone
+timezone America/New_York --isUtc
+# System bootloader configuration
+bootloader --append=" crashkernel=auto" --location=mbr --boot-drive=sda
+# autopart --type=lvm
+# Partition clearing information
+# clearpart --all --initlabel 
+reboot
+
+%packages
+@core
+kexec-tools
+
+%end
+
+%addon com_redhat_kdump --enable --reserve-mb='auto'
+
+%end
+EOF
+
+    backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
     rc=`cp /etc/dhcp/dhcpd.conf "/etc/dhcp/dhcpd.conf-$backup_ext"`;
 
 cat > /etc/dhcp/dhcpd.conf << EOF
@@ -449,6 +509,13 @@ function prepareImage {
     # 64     some mount succeeded
 };
 
+function prepareAll {
+    installSoft
+    prepareNetwork
+    prepareImage
+};
+
+
 while test $# -gt 0
 do
     case $1 in
@@ -503,18 +570,21 @@ do
     shift
 done
 
-echo "
-Use script with parametrs:
 
---isourl <url>		Set url
---isofile <file>	Set iso file
---prepareSoft	 	Install necessery software
---prepareDhcp		Configure DHCP server
---prepareTftp		Configure TFTP server
---prepareFw		Prepare firewall
---enableNfs		Configure NFS server
---prepareFtpd		Configure FTP server
---prepareHttpd		Configure HTTP server
---prepareNetwork	Configure all (DHCP,TFTP,NFS,FTP,HTTP,Firewall)
---prepareImage		Prepare image for PXE (use with --isourl or with --isofile)
-";
+if [ !$1 ]; then 
+    echo "
+    Use script with parametrs:
+
+    --isourl <url>        Set url
+    --isofile <file>      Set iso file
+    --prepareSoft         Install necessery software
+    --prepareDhcp         Configure DHCP server
+    --prepareTftp         Configure TFTP server
+    --prepareFw           Prepare firewall
+    --enableNfs           Configure NFS server
+    --prepareFtpd         Configure FTP server
+    --prepareHttpd        Configure HTTP server
+    --prepareNetwork      Configure all (DHCP,TFTP,NFS,FTP,HTTP,Firewall)
+    --prepareImage        Prepare image for PXE (use with --isourl or with --isofile)
+    ";
+fi
