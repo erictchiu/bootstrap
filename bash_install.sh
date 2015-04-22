@@ -141,6 +141,7 @@ subnet $network netmask $netmask_nm {
     filename "pxelinux.0";
 }
 EOF
+    `systemctl enable dhcpd`
     `systemctl restart dhcpd`
     echo "DHCP configuration complete.";
     echo "$tftp_root $network/255.255.255.0(ro)" >>/etc/exports
@@ -189,8 +190,11 @@ EOF
     wget -q --directory-prefix=$tftp_root/netboot/centos/7/x86_64 -c ftp://ftp.ines.lug.ro/centos/7/os/x86_64/images/pxeboot/initrd.img
     echo "Downloading vmlinuz"
     wget -q --directory-prefix=$tftp_root/netboot/centos/7/x86_64 -c ftp://ftp.ines.lug.ro/centos/7/os/x86_64/images/pxeboot/vmlinuz
+    systemctl enable xinetd
     systemctl restart xinetd
     echo "Preparing TFTP complete"
+
+
 };
 
 function disableSelinux {
