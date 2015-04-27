@@ -169,7 +169,8 @@ kexec-tools
 
 %end
 EOF
-
+    mkdir $tftp_boot/centos
+    ln -s /tftpboot/centos7-ks.cfg /tftpboot/centos/centos7-ks.cfg
     backup_ext=`date +%m-%d-%Y" "%H:%M:%S`;
     rc=`cp /etc/dhcp/dhcpd.conf "/etc/dhcp/dhcpd.conf-$backup_ext"`;
 
